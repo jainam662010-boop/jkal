@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Dashboard — Vidya Mandir</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="nb"></div>
+<div class="page-layout">
+  <div id="sb"></div>
+  <main class="main-area" id="mainArea">
+    <div style="display:flex;align-items:center;justify-content:center;padding:80px 0"><div class="spinner"></div></div>
+  </main>
+</div>
+<div class="page-watermark"></div>
+<script src="js/app.js"></script>
+<script src="js/security.js"></script>
+<script src="js/theme_todo.js"></script>
+<script>
+function getGreeting(){const h=new Date().getHours();return h<12?'Good Morning':h<17?'Good Afternoon':'Good Evening';}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  if (!App.hasProfile()) {
+    App.applyMode();
+    App.showOnboarding(() => location.reload());
+    return;
+  }
+  App.initPage('dashboard');
+  const data    = await App.loadData();
+  const p       = App.getProgress();
+  const profile = App.getProfile();
+  const admData = App._parseLS('vm_admin_data', { announcements:[] });
+  const anns    = (admData.announcements||[]).slice(0,3);
+  const motd    = localStorage.getItem('vm_motd') || 'Consistency beats perfection. Study a little every day.';
+
+  let totalDone=0, totalQz=0, totalPct=0, lastSubj=null, lastCh=null, lastTs=0;
+  data.subjects.forEach(s => {
+    const sp = p[s.id]||{};
+    totalDone += (sp.done||[]).length;
+    Object.values(sp.scores||{}).forEach(sc => { totalQz++; totalPct += sc.pct; });
+    if (sp.last && (sp.last.ts||0) > lastTs) { lastSubj=s; lastCh=sp.last; lastTs=sp.last.ts||0; }
+  });
+  const avgQ   = totalQz ? Math.round(totalPct/totalQz) : 0;
+  const streak = parseInt(localStorage.getItem('vm_streak')||'0');
+  const pomoSess = parseInt(localStorage.getItem('vm_pomo_sessions')||'0');
+
+  const subjColors = { mathematics:'var(--math)', science:'var(--sci)', 'social-science':'var(--soc)', english:'var(--eng)' };
+  const subjBgs    = { mathematics:'var(--math-s)', science:'var(--sci-s)', 'social-science':'var(--soc-s)', english:'var(--eng-s)' };
+
+  document.getElementById('mainArea').innerHTML = `
+    <div class="page-head au">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px">
+        <div>
+          <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--s5);margin-bottom:4px">${getGreeting()}</div>
+          <h1 style="font-size:1.75rem;font-weight:800;letter-spacing:-.035em;color:var(--s1)">${VidyaSec.sanitize(profile?.name||'Student')} <span style="color:var(--a)">👋</span></h1>
+          <div style="font-size:.84rem;color:var(--s5);margin-top:4px;font-style:italic">"${VidyaSec.sanitize(motd)}"</div>
+        </div>
+        <button class="btn btn-gh btn-sm" onclick="PomodoroTimer.togglePanel()" style="flex-shrink:0">⏱ Focus Timer</button>
+      </div>
+    </div>
+
+    <div class="stats-strip au-1">
+      <div class="stat-tile"><div class="stat-ico">📚</div><div><div class="stat-num">${data.subjects.length}</div><div class="stat-lbl">Subjects</div></div></div>
+      <div class="stat-tile"><div class="stat-ico">✅</div><div><div class="stat-num">${totalDone}</div><div class="stat-lbl">Chapters Done</div></div></div>
+      <div class="stat-tile"><div class="stat-ico">🏆</div><div><div class="stat-num">${avgQ}%</div><div class="stat-lbl">Quiz Average</div></div></div>
+      <div class="stat-tile"><div class="stat-ico">🔥</div><div><div class="stat-num">${streak}</div><div class="stat-lbl">Day Streak</div></div></div>
+    </div>
+
+    ${lastCh ? `
+    <div class="continue-card au-1">
+      <div class="cont-icon">${lastSubj?.icon||'📚'}</div>
+      <div class="cont-info">
+        <div class="cont-label">▶ Continue Learning</div>
+        <div class="cont-title">${VidyaSec.sanitize(lastCh.title)}</div>
+        <div class="cont-sub">${VidyaSec.sanitize(lastSubj?.name||'')} · Pick up where you left off</div>
+      </div>
+      <div class="cont-acts">
+        <div class="streak-badge"><div class="streak-n">🔥${streak}</div><div class="streak-l">streak</div></div>
+        <a href="chapter.html?subject=${lastSubj?.id||''}&chapter=${lastCh.cid}" class="cont-btn solid">Resume →</a>
+      </div>
+    </div>` : ''}
+
+    <div class="quick-row au-2">
+      ${data.subjects.map(s => `<a href="subject.html?id=${s.id}" class="quick-act" style="--qa-c:${subjColors[s.id]||'var(--a)'}">
+        <div class="qa-icon">${s.icon}</div>
+        <div class="qa-label">${VidyaSec.sanitize(s.name)}</div>
+        <div class="qa-sub">${(p[s.id]?.done||[]).length}/${s.chapters.length} done</div>
+      </a>`).join('')}
+      <a href="todo.html" class="quick-act" style="--qa-c:var(--a)">
+        <div class="qa-icon">📋</div>
+        <div class="qa-label">My Tasks</div>
+        <div class="qa-sub">${TodoPanel.getData().filter(t=>!t.done).length} pending</div>
+      </a>
+    </div>
+
+    ${anns.length ? `
+    <div class="ann-card au-2">
+      <div class="card-head"><h3>📢 Announcements</h3><span class="chip chip-a">${anns.length}</span></div>
+      ${anns.map(a=>`<div class="ann-row">
+        <span class="chip chip-${a.type==='exam'?'err':a.type==='info'?'tl':'a'}" style="flex-shrink:0;margin-top:1px">${a.type}</span>
+        <div style="flex:1"><div style="font-size:.83rem;font-weight:600;margin-bottom:1px">${VidyaSec.sanitize(a.title)}</div><div style="font-size:.76rem;color:var(--s5)">${VidyaSec.sanitize(a.text)}</div></div>
+        <div style="font-size:.67rem;color:var(--n4);flex-shrink:0">${a.date||''}</div>
+      </div>`).join('')}
+    </div>` : ''}
+
+    <div style="margin-bottom:18px" class="au-2">${App.adNative('dashboard')}</div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px;flex-wrap:wrap;gap:8px" class="au-3">
+      <div style="font-size:1rem;font-weight:700;color:var(--s1)">Your Subjects</div>
+      <span class="chip chip-a">4 Core</span>
+    </div>
+    <div class="subjects-grid" id="subjGrid"></div>
+
+    <div style="margin-top:26px;margin-bottom:11px;display:flex;align-items:center;justify-content:space-between" class="au-4">
+      <div style="font-size:1rem;font-weight:700;color:var(--s1)">Recent Tasks</div>
+      <a href="todo.html" class="btn btn-gh btn-sm">View All →</a>
+    </div>
+    <div id="todoPreview" style="max-width:680px"></div>`;
+
+  // Sort subjects - favourite first
+  const sortedSubjs = [...data.subjects];
+  if (profile?.favourite) {
+    const fi = sortedSubjs.findIndex(s => s.id === profile.favourite);
+    if (fi > 0) { const [f] = sortedSubjs.splice(fi,1); sortedSubjs.unshift(f); }
+  }
+
+  document.getElementById('subjGrid').innerHTML = sortedSubjs.map((s,i) => {
+    const pct  = App.getSubjPct(s.id, s);
+    const sp   = p[s.id]||{};
+    const done = (sp.done||[]).length;
+    const sc   = subjColors[s.id]||'var(--a)';
+    const sb2  = subjBgs[s.id]||'rgba(91,91,214,.07)';
+    return `<a href="subject.html?id=${s.id}" class="subj-card card-3d au" style="animation-delay:${i*55}ms;--sc-c:${sc};--sc-bg:${sb2}">
+      <div class="sc-blob"></div>
+      <div class="sc-top"><div class="sc-em">${s.icon}</div><div class="sc-arrow">→</div></div>
+      <div class="sc-name">${VidyaSec.sanitize(s.name)}</div>
+      <div class="sc-hint">${VidyaSec.sanitize(s.description||'')}</div>
+      <div class="sc-meta"><div class="sc-mi">📄 ${s.chapters.length} chapters</div><div class="sc-mi">✅ ${done} done</div></div>
+      <div style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;font-size:.68rem;color:var(--s5);margin-bottom:4px"><span>Progress</span><span>${pct}%</span></div>
+        <div class="pbar"><div class="pfill" style="width:${pct}%"></div></div>
+      </div>
+      <div class="sc-foot">
+        <span style="font-size:.7rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:145px;color:var(--s5)">
+          ${sp.last?.title ? '⏱ ' + sp.last.title : 'Not started yet'}
+        </span>
+        <div class="sc-pill">${pct>0?'Continue →':'Start →'}</div>
+      </div>
+    </a>`;
+  }).join('');
+
+  const todos = TodoPanel.getData().slice(0,4);
+  document.getElementById('todoPreview').innerHTML = todos.length
+    ? `<div class="todo-items">${todos.map(t=>TodoPanel.itemHTML(t)).join('')}</div>`
+    : `<div style="color:var(--s5);font-size:.84rem;padding:8px 0">No tasks yet. <a href="todo.html" style="color:var(--a);font-weight:600">Add your first task →</a></div>`;
+});
+</script>
+<script src="js/music.js"></script>
+</body>
+</html>

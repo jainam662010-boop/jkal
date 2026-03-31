@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Subject — Vidya Mandir</title>
+<link rel="stylesheet" href="css/style.css">
+<style>
+.subj-hero::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--sh-c,linear-gradient(90deg,var(--a),var(--a-2)));border-radius:var(--r-xl) var(--r-xl) 0 0}
+</style>
+</head>
+<body>
+<div id="nb"></div>
+<div class="page-layout">
+  <div id="sb"></div>
+  <main class="main-area" id="mainArea">
+    <div style="display:flex;align-items:center;justify-content:center;padding:80px 0"><div class="spinner"></div></div>
+  </main>
+</div>
+<div class="page-watermark"></div>
+<script src="js/app.js"></script>
+<script src="js/security.js"></script>
+<script src="js/theme_todo.js"></script>
+<script>
+const SUBJ_COLORS = { mathematics:'#F59E0B', science:'#10B981', 'social-science':'#F97316', english:'#3B82F6' };
+const SUBJ_BGS    = { mathematics:'#FFFBEB', science:'#ECFDF5', 'social-science':'#FFF7ED', english:'#EFF6FF' };
+let _filter = 'all';
+
+document.addEventListener('DOMContentLoaded', async () => {
+  const sid = App.getParam('id'); if (!sid) { location.href='dashboard.html'; return; }
+  await App.loadData();
+  const subj = App.getSubject(sid); if (!subj) { location.href='dashboard.html'; return; }
+  document.title = `${subj.name} — Vidya Mandir`;
+  App.initPage(sid);
+
+  const p   = App.getProgress();
+  const sp  = p[sid]||{};
+  const done = sp.done||[];
+  const pct  = App.getSubjPct(sid, subj);
+  const sc   = SUBJ_COLORS[sid]||'var(--a)';
+  const sb2  = SUBJ_BGS[sid]||'rgba(91,91,214,.07)';
+  const admData = App._parseLS('vm_admin_data', { pdfs:[], ncertTopics:[] });
+
+  document.getElementById('mainArea').innerHTML = `
+    <div class="page-head au">
+      <div class="breadcrumb"><a href="dashboard.html">Dashboard</a><span class="sep">›</span><span>${VidyaSec.sanitize(subj.name)}</span></div>
+    </div>
+
+    <div class="subj-hero card au" style="margin-bottom:18px;--sh-c:${sc}">
+      <div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+        <div style="width:56px;height:56px;border-radius:var(--r-sm);display:flex;align-items:center;justify-content:center;font-size:28px;background:${sb2};flex-shrink:0">${subj.icon}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:1.6rem;font-weight:800;letter-spacing:-.03em;margin-bottom:5px">${VidyaSec.sanitize(subj.name)}</div>
+          <div style="font-size:.84rem;color:var(--s5);margin-bottom:11px">${VidyaSec.sanitize(subj.description||'')}</div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:.72rem;color:var(--s5);margin-bottom:10px">
+            <span>📄 ${subj.chapters.length} chapters</span>
+            <span>✅ ${done.length} completed</span>
+            <span>📊 ${pct}% progress</span>
+          </div>
+          <div class="pbar pbar-lg" style="max-width:320px"><div class="pfill" style="width:${pct}%"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="au-1">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:11px;flex-wrap:wrap;gap:8px">
+        <div style="font-size:1rem;font-weight:700;color:var(--s1)">Chapters</div>
+        <span style="font-size:.73rem;color:var(--s5)">${subj.chapters.length} in syllabus</span>
+      </div>
+      <div class="topic-filter">
+        <button class="tf-btn on" data-f="all" onclick="filterCh('all',this)">All</button>
+        <button class="tf-btn" data-f="pending" onclick="filterCh('pending',this)">Pending</button>
+        <button class="tf-btn" data-f="done" onclick="filterCh('done',this)">Completed</button>
+      </div>
+      <div class="ch-list" id="chList"></div>
+    </div>`;
+
+  renderCh(subj, sid, done, sp, admData);
+});
+
+function filterCh(f, btn) {
+  _filter = f;
+  document.querySelectorAll('.tf-btn').forEach(b => b.classList.toggle('on', b.dataset.f===f));
+  const sid   = App.getParam('id');
+  const subj  = App.getSubject(sid);
+  const sp    = App.getProgress()[sid]||{};
+  renderCh(subj, sid, sp.done||[], sp, App._parseLS('vm_admin_data',{pdfs:[],ncertTopics:[]}));
+}
+
+function renderCh(subj, sid, done, sp, admData) {
+  let chs = subj.chapters;
+  if (_filter==='done')    chs = chs.filter(c=>done.includes(c.id));
+  if (_filter==='pending') chs = chs.filter(c=>!done.includes(c.id));
+  const el = document.getElementById('chList'); if (!el) return;
+  if (!chs.length) { el.innerHTML=`<div style="text-align:center;padding:28px;color:var(--s5);font-size:.85rem">No chapters match this filter</div>`; return; }
+  el.innerHTML = chs.map((ch,i)=>{
+    const isDone = done.includes(ch.id);
+    const score  = sp.scores?.[ch.id];
+    const origI  = subj.chapters.indexOf(ch);
+    const bm     = App.isBookmarked(sid,ch.id);
+    const admTop = (admData.ncertTopics||[]).filter(t=>t.chapter===ch.id).length;
+    const chPDFs = (admData.pdfs||[]).filter(pdf=>pdf.chapter===ch.id).length;
+    return `<a href="chapter.html?subject=${sid}&chapter=${ch.id}" class="ch-row ${isDone?'done':''}" style="animation:fadeUp .3s ${i*40}ms both">
+      <div class="ch-num">${isDone?'✓':String(origI+1).padStart(2,'0')}</div>
+      <div class="ch-info">
+        <div class="ch-title">${VidyaSec.sanitize(ch.title)}</div>
+        <div class="ch-metas">
+          <span>▶ ${ch.lessons.length} lesson${ch.lessons.length!==1?'s':''}</span>
+          <span>⏱ ${ch.duration}</span>
+          <span>❓ ${ch.quiz.length} Qs</span>
+          <span>⭐ ${(ch.ncertTopics?.length||0)+admTop}</span>
+          ${chPDFs?`<span>📁 ${chPDFs}</span>`:''}
+          ${bm?`<span>🔖</span>`:''}
+          ${score?`<span class="score-badge">🏆 ${score.pct}%</span>`:''}
+          ${isDone?`<span style="color:var(--sci)">✅</span>`:''}
+        </div>
+      </div>
+      <div class="ch-arrow">›</div>
+    </a>`;
+  }).join('');
+}
+</script>
+<script src="js/music.js"></script>
+</body>
+</html>

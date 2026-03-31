@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Chapter — Vidya Mandir</title>
+<link rel="stylesheet" href="css/style.css">
+<style>
+/* Chapter-specific styles */
+.recommend-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.rec-card { background:var(--bg3); border:1px solid var(--bdr); border-radius:var(--r); padding:12px 14px; text-decoration:none; color:inherit; display:block; transition:all .15s; min-height:64px; }
+.rec-card:hover, .rec-card:focus { border-color:var(--bdr2); background:rgba(var(--br),.07); }
+.rec-title { font-size:.82rem; font-weight:700; color:var(--t1); margin-bottom:4px; line-height:1.3; }
+.rec-sub   { font-size:.71rem; color:var(--t3); }
+@media(max-width:480px) { .recommend-grid { grid-template-columns:1fr; } }
+
+/* lesson rows need big tap area */
+.lesson-row { cursor:pointer; }
+.lesson-row:active { background:rgba(var(--br),.12); }
+
+/* Video embed safe */
+.vid-embed { position:relative; width:100%; padding-bottom:56.25%; background:#000; overflow:hidden; }
+.vid-embed iframe { position:absolute; top:0; left:0; width:100%; height:100%; border:none; }
+
+/* Sticky video on scroll for desktop */
+@media(min-width:900px) {
+  .vid-sticky { position:sticky; top:calc(var(--nav-h) + 8px); }
+}
+</style>
+</head>
+<body>
+<div id="nb"></div>
+<div class="page-layout">
+  <div id="sb"></div>
+  <main class="main-area" id="mainArea">
+    <div style="display:flex;align-items:center;justify-content:center;padding:80px 0">
+      <div class="spinner"></div>
+    </div>
+  </main>
+</div>
+<div class="page-watermark"></div>
+
+<script src="js/app.js"></script>
+<script src="js/security.js"></script>
+<script src="js/theme_todo.js"></script>
+<script>
+'use strict';
+
+/* ═══════════ QUIZ ENGINE ═══════════ */
+const Quiz = {
+  qs: [], cur: 0, sel: null, answered: false, score: 0, sid: '', cid: '',
+
+  start(qs, sid, cid) {
+    if (!qs || qs.length === 0) { App.toast('No questions available', '⚠️'); return; }
+    this.qs = qs; this.cur = 0; this.sel = null;
+    this.answered = false; this.score = 0;
+    this.sid = sid; this.cid = cid;
+    this._render();
+  },
+
+  _render() {
+    const el = document.getElementById('quizBody');
+    if (!el) return;
+    const q   = this.qs[this.cur];
+    const pct = Math.round((this.cur / this.qs.length) * 100);
+    const L   = ['A','B','C','D'];
+
+    el.innerHTML =
+      `<div class="qpbar"><div class="qpfill" id="qpf" style="width:${pct}%"></div></div>` +
+      `<span class="q-label">Question ${this.cur + 1} of ${this.qs.length}` +
+        (q.difficulty ? ` &nbsp;·&nbsp; ${q.difficulty}` : '') + `</span>` +
+      `<div class="q-text">${VidyaSec.sanitize(q.q)}</div>` +
+      `<div class="q-opts" id="qOpts">` +
+        q.options.map((o, i) =>
+          `<button class="q-opt" data-idx="${i}">` +
+            `<div class="q-lbl">${L[i]}</div>` +
+            VidyaSec.sanitize(o) +
+          `</button>`
+        ).join('') +
+      `</div>` +
+      `<div class="q-fb" id="qFb"></div>` +
+      `<div class="q-acts">` +
+        `<button class="btn btn-a" id="qSub">Submit Answer</button>` +
+        `<button class="btn btn-gh" id="qNext" style="display:none">` +
+          (this.cur < this.qs.length - 1 ? 'Next →' : 'See Results') +
+        `</button>` +
+      `</div>`;
+
+    // Bind via event delegation — no inline onclick
+    document.getElementById('qOpts').addEventListener('click', e => {
+      const btn = e.target.closest('.q-opt');
+      if (btn && !this.answered) this._pick(parseInt(btn.dataset.idx));
+    });
+    document.getElementById('qSub').addEventListener('click',  () => this._submit());
+    document.getElementById('qNext').addEventListener('click', () => this._next());
+  },
+
+  _pick(i) {
+    this.sel = i;
+    document.querySelectorAll('.q-opt').forEach((b, j) => b.classList.toggle('sel', j === i));
+  },
+
+  _submit() {
+    if (this.sel === null || this.answered) return;
+    this.answered = true;
+    const q = this.qs[this.cur];
+    document.querySelectorAll('.q-opt').forEach((b, i) => {
+      if (i === q.answer)  b.classList.add('ok');
+      else if (i === this.sel) b.classList.add('ng');
+    });
+    const fb = document.getElementById('qFb');
+    if (this.sel === q.answer) {
+      this.score++;
+      fb.className = 'q-fb ok show';
+      fb.textContent = '✅ Correct!';
+    } else {
+      fb.className = 'q-fb ng show';
+      fb.innerHTML = '❌ Incorrect. Correct: <strong>' +
+        VidyaSec.sanitize(q.options[q.answer]) + '</strong>';
+    }
+    document.getElementById('qSub').style.display  = 'none';
+    document.getElementById('qNext').style.display = 'inline-flex';
+    const pf = document.getElementById('qpf');
+    if (pf) pf.style.width = Math.round(((this.cur + 1) / this.qs.length) * 100) + '%';
+  },
+
+  _next() {
+    if (this.cur >= this.qs.length - 1) { this._result(); return; }
+    this.cur++; this.sel = null; this.answered = false;
+    this._render();
+  },
+
+  _result() {
+    const pct = Math.round(this.score / this.qs.length * 100);
+    const [em, msg] = pct >= 80 ? ['🏆','Board Ready!']
+                    : pct >= 60 ? ['👍','Good work!']
+                    : pct >= 40 ? ['📚','Keep practising!']
+                    : ['💪','Revise and retry!'];
+    const el = document.getElementById('quizBody');
+    if (!el) return;
+    el.innerHTML =
+      `<div class="quiz-result">` +
+        `<span class="qr-em">${em}</span>` +
+        `<div style="font-family:var(--fd);font-size:1.1rem;color:var(--bl);margin-bottom:8px">${msg}</div>` +
+        `<div class="qr-score">${this.score}/${this.qs.length}</div>` +
+        `<div class="qr-sub">${pct}% accuracy</div>` +
+        `<div style="display:flex;gap:9px;justify-content:center;flex-wrap:wrap;margin-top:16px">` +
+          `<button class="btn btn-gh" id="qRetry">↺ Retry</button>` +
+          `<button class="btn btn-tl" id="qDone">✅ Mark Chapter Complete</button>` +
+        `</div>` +
+      `</div>`;
+    document.getElementById('qRetry').addEventListener('click', () =>
+      Quiz.start(Quiz.qs, Quiz.sid, Quiz.cid));
+    document.getElementById('qDone').addEventListener('click', () =>
+      ChPage.markDone());
+    App.saveScore(this.sid, this.cid, this.score, this.qs.length);
+  }
+};
+
+/* ═══════════ CHAPTER PAGE ═══════════ */
+const ChPage = {
+  sid: '', cid: '', subj: null, ch: null, li: 0,
+
+  async init() {
+    this.sid = App.getParam('subject') || '';
+    this.cid = App.getParam('chapter') || '';
+
+    if (!this.sid || !this.cid) { location.href = 'dashboard.html'; return; }
+
+    let data;
+    try { data = await App.loadData(); } catch(e) {
+      document.getElementById('mainArea').innerHTML =
+        '<div style="padding:40px;text-align:center;color:var(--t2)">⚠️ Could not load content. Please refresh.</div>';
+      return;
+    }
+
+    this.subj = App.getSubject(this.sid);
+    this.ch   = App.getChapter(this.sid, this.cid);
+
+    if (!this.subj || !this.ch) { location.href = 'dashboard.html'; return; }
+    if (!this.ch.lessons || this.ch.lessons.length === 0) {
+      this.ch.lessons = [{ id:'l0', title: this.ch.title, videoId:'', duration:'—' }];
+    }
+
+    document.title = this.ch.title + ' — Vidya Mandir';
+    App.initPage(this.sid);
+
+    // Set lesson index from URL param
+    const liParam = App.getParam('lesson');
+    if (liParam) {
+      const idx = this.ch.lessons.findIndex(l => l.id === liParam);
+      if (idx >= 0) this.li = idx;
+    }
+    // Clamp to valid range
+    this.li = Math.max(0, Math.min(this.li, this.ch.lessons.length - 1));
+
+    this._render();
+
+    // Track progress
+    const cur = this.ch.lessons[this.li];
+    App.setLast(this.sid, this.cid, cur?.title || this.ch.title);
+    if (cur?.id) App.markWatched(this.sid, this.cid, cur.id);
+  },
+
+  _render() {
+    const { ch, subj, sid, cid } = this;
+    const lesson    = ch.lessons[this.li];
+    const p         = App.getProgress();
+    const isDone    = (p[sid]?.done || []).includes(cid);
+    const bm        = App.isBookmarked(sid, cid);
+    const admData   = App._parseLS('vm_admin_data', { pdfs:[], ncertTopics:[], teachers:[] });
+    const pdfs      = (admData.pdfs    || []).filter(f => f.chapter === cid || f.subject === sid);
+    const admTopics = (admData.ncertTopics || []).filter(t => t.chapter === cid || t.subject === sid);
+    const allTopics = [...(ch.ncertTopics || []), ...admTopics];
+    const admTeach  = (admData.teachers  || []).filter(t => !t.subject || t.subject === sid);
+    const allTeach  = [...(ch.teachers   || []), ...admTeach];
+    const recommended = subj.chapters.filter(c => c.id !== cid).slice(0, 4);
+
+    // Build video src safely
+    const vidSrc = lesson.videoId
+      ? `https://www.youtube-nocookie.com/embed/${lesson.videoId}?rel=0&modestbranding=1`
+      : '';
+
+    const main = document.getElementById('mainArea');
+    main.innerHTML = '';           // clear loading spinner
+
+    // ── PAGE HEADER ──
+    const header = document.createElement('div');
+    header.className = 'page-head au';
+    header.innerHTML =
+      `<div class="breadcrumb">` +
+        `<a href="dashboard.html">Dashboard</a><span class="sep">›</span>` +
+        `<a href="subject.html?id=${sid}">${VidyaSec.sanitize(subj.name)}</a>` +
+        `<span class="sep">›</span><span>${VidyaSec.sanitize(ch.title)}</span>` +
+      `</div>` +
+      `<div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px">` +
+        `<div>` +
+          `<h1>${VidyaSec.sanitize(ch.title)}</h1>` +
+          `<div class="lead" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:5px;font-size:.77rem">` +
+            `<span>▶ ${ch.lessons.length} lesson${ch.lessons.length !== 1 ? 's' : ''}</span>` +
+            `<span>⏱ ${ch.duration}</span>` +
+            `<span>❓ ${ch.quiz.length} Qs</span>` +
+            `<span>⭐ ${allTopics.length} topics</span>` +
+            (pdfs.length ? `<span style="color:var(--tll)">📁 ${pdfs.length} PDFs</span>` : '') +
+            (isDone ? `<span style="color:var(--tll)">✅ Complete</span>` : '') +
+          `</div>` +
+        `</div>` +
+        (isDone ? `<span class="chip chip-tl" style="font-size:.8rem;padding:5px 12px">✅ Done</span>` : '') +
+      `</div>`;
+    main.appendChild(header);
+
+    // ── GRID WRAPPER ──
+    const grid = document.createElement('div');
+    grid.className = 'ch-grid';
+    main.appendChild(grid);
+
+    // LEFT COLUMN
+    const left = document.createElement('div');
+    grid.appendChild(left);
+
+    // -- VIDEO --
+    const vidWrap = document.createElement('div');
+    vidWrap.className = 'vid-wrap vid-sticky au';
+    if (vidSrc) {
+      vidWrap.innerHTML =
+        `<div class="card-top-rule"></div>` +
+        `<div class="vid-embed">` +
+          `<iframe id="vFrame" src="${vidSrc}" title="${VidyaSec.sanitize(lesson.title)}"` +
+          ` allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture"` +
+          ` allowfullscreen loading="lazy"></iframe>` +
+        `</div>` +
+        `<div class="vid-meta">` +
+          `<h3 id="vTitle">${VidyaSec.sanitize(lesson.title)}</h3>` +
+          `<div style="display:flex;gap:10px;font-size:.73rem;color:var(--t3);align-items:center;flex-wrap:wrap">` +
+            `<span>⏱ <span id="vDur">${lesson.duration}</span></span>` +
+            `<span>${subj.icon} ${VidyaSec.sanitize(subj.name)}</span>` +
+            `<button class="vid-bookmark${bm ? ' saved' : ''}" id="bmBtn" style="margin-left:auto">` +
+              `${bm ? '🔖' : '🔗'}` +
+            `</button>` +
+          `</div>` +
+        `</div>`;
+    } else {
+      vidWrap.innerHTML =
+        `<div class="card-top-rule"></div>` +
+        `<div style="padding:32px;text-align:center;color:var(--t3)">` +
+          `<div style="font-size:40px;margin-bottom:8px">🎬</div>` +
+          `<div>Video not yet assigned.<br>Admin can add a YouTube link.</div>` +
+        `</div>` +
+        `<div class="vid-meta"><h3 id="vTitle">${VidyaSec.sanitize(lesson.title)}</h3></div>`;
+    }
+    left.appendChild(vidWrap);
+
+    // Bookmark button event
+    document.getElementById('bmBtn')?.addEventListener('click', () => this._toggleBm());
+
+    // -- LESSONS LIST --
+    if (ch.lessons.length > 1) {
+      const llCard = document.createElement('div');
+      llCard.className = 'lesson-card au-1';
+      let llHtml =
+        `<div class="card-top-rule"></div>` +
+        `<div class="sec-head"><h3>📋 Lessons</h3>` +
+        `<span style="font-size:.73rem;color:var(--t3)">${ch.lessons.length} total</span></div>`;
+      ch.lessons.forEach((l, i) => {
+        llHtml +=
+          `<div class="lesson-row${i === this.li ? ' active' : ''}" data-li="${i}">` +
+            `<div class="lesson-n" id="ln${i}">${i === this.li ? '▶' : i + 1}</div>` +
+            `<div style="flex:1"><div class="lesson-title">${VidyaSec.sanitize(l.title)}</div></div>` +
+            `<div class="lesson-dur">${l.duration}</div>` +
+          `</div>`;
+      });
+      llCard.innerHTML = llHtml;
+      // Event delegation — one listener, not N inline handlers
+      llCard.addEventListener('click', e => {
+        const row = e.target.closest('.lesson-row');
+        if (row) this._switchLesson(parseInt(row.dataset.li));
+      });
+      left.appendChild(llCard);
+    }
+
+    // -- ADMIN NOTE --
+    if (ch._adminNote) {
+      const noteDiv = document.createElement('div');
+      noteDiv.className = 'gcard au-2';
+      noteDiv.style.marginBottom = '14px';
+      noteDiv.innerHTML =
+        `<div class="card-top-rule"></div>` +
+        `<div class="card-pad">` +
+          `<div style="font-family:var(--fd);font-size:.88rem;color:var(--bl);font-weight:700;margin-bottom:6px">📌 Teacher's Note</div>` +
+          `<p style="font-size:.84rem;color:var(--t2);line-height:1.7;white-space:pre-line">${VidyaSec.sanitize(ch._adminNote)}</p>` +
+        `</div>`;
+      left.appendChild(noteDiv);
+    }
+
+    // -- NCERT TOPICS --
+    if (allTopics.length) {
+      const tc = document.createElement('div');
+      tc.className = 'topics-card au-2';
+      let tHtml =
+        `<div class="card-top-rule"></div>` +
+        `<div class="sec-head"><h3>⭐ NCERT Important Topics</h3><span class="chip chip-nc">Board Focus</span></div>`;
+      allTopics.forEach((t, i) => {
+        tHtml +=
+          `<div class="topic-row">` +
+            `<div class="topic-n">${i + 1}</div>` +
+            `<div class="topic-text">${VidyaSec.sanitize(t.text)}` +
+              (t.important ? ' <span style="color:var(--b)">★</span>' : '') +
+              (t.type ? ` <span class="chip chip-tl" style="font-size:.62rem;padding:1px 6px">${VidyaSec.sanitize(t.type)}</span>` : '') +
+            `</div>` +
+            (t.marks ? `<div class="topic-marks">${VidyaSec.sanitize(t.marks)}M</div>` : '') +
+          `</div>`;
+      });
+      tc.innerHTML = tHtml;
+      left.appendChild(tc);
+    }
+
+    // -- PDFs --
+    if (pdfs.length) {
+      const pdfCard = document.createElement('div');
+      pdfCard.className = 'pdf-card au-3';
+      let pHtml =
+        `<div class="card-top-rule"></div>` +
+        `<div class="sec-head"><h3>📁 PDF Resources</h3>` +
+        `<span class="chip chip-tl">${pdfs.length} file${pdfs.length !== 1 ? 's' : ''}</span></div>` +
+        `<div class="card-pad">`;
+      pdfs.forEach(pdf => {
+        pHtml +=
+          `<div class="pdf-row" data-url="${pdf.url}">` +
+            `<span style="font-size:20px">📄</span>` +
+            `<span style="flex:1;font-size:.84rem;font-weight:600">${VidyaSec.sanitize(pdf.name)}</span>` +
+            `<span class="chip chip-${pdf.type === 'Notes' ? 'b' : pdf.type === 'Questions' ? 'a' : 'tl'}">` +
+              VidyaSec.sanitize(pdf.type || 'Notes') +
+            `</span>` +
+            `<a href="${pdf.url}" download="${VidyaSec.sanitize(pdf.name)}" class="btn btn-gh btn-sm" rel="noopener">⬇</a>` +
+          `</div>`;
+      });
+      pHtml += `<div id="pdfViewerWrap" style="display:none;margin-top:10px;border-radius:10px;overflow:hidden">` +
+        `<iframe id="pdfFrame" src="" style="width:100%;height:480px;border:none;background:#fff"></iframe>` +
+      `</div></div>`;
+      pdfCard.innerHTML = pHtml;
+      // Delegation for pdf rows
+      pdfCard.addEventListener('click', e => {
+        const row = e.target.closest('.pdf-row');
+        if (row && !e.target.closest('a')) this._viewPDF(row.dataset.url);
+      });
+      left.appendChild(pdfCard);
+    }
+
+    // -- NOTES --
+    const notesCard = document.createElement('div');
+    notesCard.className = 'notes-card au-3';
+    notesCard.innerHTML =
+      `<div class="card-top-rule"></div>` +
+      `<div class="sec-head">` +
+        `<h3>📝 Chapter Notes</h3>` +
+        `<div style="display:flex;gap:6px">` +
+          `<span class="chip chip-b">NCERT</span>` +
+          `<button class="btn btn-gh btn-sm" id="printBtn">🖨 Print</button>` +
+        `</div>` +
+      `</div>` +
+      `<div class="notes-body" id="notesBody">${this._renderNotes(ch.notes)}</div>`;
+    left.appendChild(notesCard);
+    document.getElementById('printBtn')?.addEventListener('click', () => this._print());
+
+    // -- QUIZ --
+    const allQ = this._getAllQuiz();
+    const quizCard = document.createElement('div');
+    quizCard.className = 'quiz-card au-4';
+    quizCard.innerHTML =
+      `<div class="card-top-rule"></div>` +
+      `<div class="sec-head"><h3>🧠 Chapter Quiz</h3>` +
+        `<span class="chip chip-a">${allQ.length} Questions</span>` +
+      `</div>` +
+      `<div id="quizBody" class="quiz-body">` +
+        `<div style="text-align:center;padding:16px">` +
+          `<p style="color:var(--t2);margin-bottom:14px;font-size:.88rem">` +
+            `Test your understanding of <strong>${VidyaSec.sanitize(ch.title)}</strong>` +
+          `</p>` +
+          `<button class="btn btn-a btn-lg" id="startQuizBtn">🚀 Start Quiz</button>` +
+        `</div>` +
+      `</div>`;
+    left.appendChild(quizCard);
+    quizCard.querySelector('#startQuizBtn')?.addEventListener('click', () =>
+      Quiz.start(this._getAllQuiz(), sid, cid));
+
+    // -- RECOMMENDED --
+    if (recommended.length) {
+      const recDiv = document.createElement('div');
+      recDiv.className = 'au-4';
+      recDiv.style.marginTop = '4px';
+      let rHtml =
+        `<div style="font-family:var(--fd);font-size:.95rem;color:var(--bl);margin-bottom:10px">` +
+          `📚 More in ${VidyaSec.sanitize(subj.name)}` +
+        `</div>` +
+        `<div class="recommend-grid">`;
+      recommended.forEach(r => {
+        const rd = (p[sid]?.done || []).includes(r.id);
+        rHtml +=
+          `<a href="chapter.html?subject=${sid}&chapter=${r.id}" class="rec-card">` +
+            `<div class="rec-title">${VidyaSec.sanitize(r.title)}</div>` +
+            `<div class="rec-sub">⏱ ${r.duration} · ❓ ${r.quiz.length} Qs${rd ? ' · ✅' : ''}</div>` +
+          `</a>`;
+      });
+      rHtml += `</div>`;
+      recDiv.innerHTML = rHtml;
+      left.appendChild(recDiv);
+    }
+
+    // -- ACTION BUTTONS --
+    const actions = document.createElement('div');
+    actions.style.cssText = 'display:flex;gap:9px;flex-wrap:wrap;margin-top:18px';
+    actions.innerHTML =
+      `<button class="btn btn-a" id="doneBtn">✅ Mark Complete</button>` +
+      `<a href="subject.html?id=${sid}" class="btn btn-gh">← ${VidyaSec.sanitize(subj.name)}</a>` +
+      `<button class="btn btn-tl" id="todoBtn">📋 Add to Tasks</button>`;
+    left.appendChild(actions);
+    actions.querySelector('#doneBtn')?.addEventListener('click', () => this.markDone());
+    actions.querySelector('#todoBtn')?.addEventListener('click', () => this._addTodo());
+
+    // RIGHT COLUMN (sidebar)
+    const right = document.createElement('div');
+    grid.appendChild(right);
+
+    // Teachers
+    if (allTeach.length) {
+      const tc = document.createElement('div');
+      tc.className = 'side-card';
+      let tHtml =
+        `<div class="card-top-rule"></div>` +
+        `<div class="sec-head"><h3>👨‍🏫 Educators</h3></div>` +
+        `<div style="padding:10px;display:flex;flex-direction:column;gap:7px">`;
+      allTeach.forEach(t => {
+        tHtml +=
+          `<div class="teacher-row">` +
+            `<div class="teacher-av" style="background:${t.color || 'var(--b)'};color:#fff">` +
+              VidyaSec.sanitize((t.avatar || t.name?.[0] || 'T').slice(0,2)) +
+            `</div>` +
+            `<div>` +
+              `<div style="font-size:.83rem;font-weight:700">${VidyaSec.sanitize(t.name)}</div>` +
+              `<div style="font-size:.7rem;color:var(--t3)">📺 ${VidyaSec.sanitize(t.channel)}</div>` +
+            `</div>` +
+          `</div>`;
+      });
+      tHtml += `</div>`;
+      tc.innerHTML = tHtml;
+      right.appendChild(tc);
+    }
+
+    // Chapter nav
+    const navCard = document.createElement('div');
+    navCard.className = 'side-card';
+    let navHtml =
+      `<div class="card-top-rule"></div>` +
+      `<div class="sec-head"><h3>📑 ${VidyaSec.sanitize(subj.name)}</h3></div>` +
+      `<div style="padding:7px">`;
+    subj.chapters.forEach((c, i) => {
+      const d2 = (p[sid]?.done || []).includes(c.id);
+      navHtml +=
+        `<a href="chapter.html?subject=${sid}&chapter=${c.id}"` +
+          ` class="ch-nav-link${c.id === cid ? ' active' : ''}${d2 ? ' done-ch' : ''}">` +
+          `<div class="ch-nav-n">${d2 ? '✓' : i + 1}</div>` +
+          `<span>${VidyaSec.sanitize(c.title)}</span>` +
+        `</a>`;
+    });
+    navHtml += `</div>`;
+    navCard.innerHTML = navHtml;
+    right.appendChild(navCard);
+
+    // Quick task widget
+    const taskCard = document.createElement('div');
+    taskCard.className = 'side-card';
+    taskCard.innerHTML =
+      `<div class="card-top-rule"></div>` +
+      `<div class="quick-widget">` +
+        `<div class="qw-title">📋 Quick Task</div>` +
+        `<input class="todo-inp" id="qTask" placeholder="Revision note…" style="margin-bottom:7px;width:100%">` +
+        `<select class="fc" id="qPri" style="margin-bottom:8px;font-size:.8rem">` +
+          `<option value="normal">Normal</option>` +
+          `<option value="high">🔴 High Priority</option>` +
+        `</select>` +
+        `<button class="btn btn-a btn-sm" id="qAddBtn" style="width:100%;justify-content:center">+ Add Task</button>` +
+      `</div>`;
+    // Bind events after insert
+    right.appendChild(taskCard);
+    taskCard.querySelector('#qAddBtn')?.addEventListener('click', () => this._addQuick());
+    taskCard.querySelector('#qTask')?.addEventListener('keydown', e => {
+      if (e.key === 'Enter') this._addQuick();
+    });
+  },
+
+  // ── Lesson switch ──
+  _switchLesson(idx) {
+    if (idx < 0 || idx >= this.ch.lessons.length) return;
+    this.li = idx;
+    const l = this.ch.lessons[idx];
+
+    // Update iframe
+    const frame = document.getElementById('vFrame');
+    if (frame) {
+      frame.src = l.videoId
+        ? `https://www.youtube-nocookie.com/embed/${l.videoId}?rel=0&modestbranding=1&autoplay=1`
+        : '';
+    }
+
+    // Update meta text
+    const vt = document.getElementById('vTitle');
+    if (vt) vt.textContent = l.title;
+    const vd = document.getElementById('vDur');
+    if (vd) vd.textContent = l.duration;
+
+    // Update lesson row highlight
+    document.querySelectorAll('.lesson-row').forEach((row, i) => {
+      row.classList.toggle('active', i === idx);
+      const n = document.getElementById('ln' + i);
+      if (n) n.textContent = i === idx ? '▶' : i + 1;
+    });
+
+    App.setLast(this.sid, this.cid, l.title);
+    if (l.id) App.markWatched(this.sid, this.cid, l.id);
+  },
+
+  // ── Bookmark ──
+  _toggleBm() {
+    const saved = App.toggleBookmark(this.sid, this.cid);
+    const btn   = document.getElementById('bmBtn');
+    if (btn) { btn.textContent = saved ? '🔖' : '🔗'; btn.classList.toggle('saved', saved); }
+    App.toast(saved ? 'Bookmarked! 🔖' : 'Bookmark removed');
+  },
+
+  // ── PDF viewer ──
+  _viewPDF(url) {
+    const frame = document.getElementById('pdfFrame');
+    const wrap  = document.getElementById('pdfViewerWrap');
+    if (frame) frame.src = url;
+    if (wrap)  { wrap.style.display = 'block'; wrap.scrollIntoView({ behavior:'smooth', block:'start' }); }
+  },
+
+  // ── Notes renderer ──
+  _renderNotes(n) {
+    if (!n?.content || n.content.length === 0)
+      return '<p style="color:var(--t3)">No notes available for this chapter.</p>';
+    return n.content.map(item => {
+      const t = VidyaSec.sanitize(item.text || '');
+      switch (item.type) {
+        case 'intro':    return `<div class="n-intro">${t}</div>`;
+        case 'heading':  return `<div class="n-head">${t}</div>`;
+        case 'text':     return `<p class="n-text">${t}</p>`;
+        case 'keypoint': return `<div class="n-kp">${t}</div>`;
+        case 'formula':  return `<div class="n-formula">📐 ${t}</div>`;
+        case 'example':
+          return `<div class="n-example">` +
+            `<div class="n-q">💡 ${VidyaSec.sanitize(item.question || '')}</div>` +
+            `<div class="n-a">→ ${VidyaSec.sanitize(item.answer || '')}</div>` +
+          `</div>`;
+        default: return `<p class="n-text">${t}</p>`;
+      }
+    }).join('');
+  },
+
+  // ── Get all quiz (built-in + admin) ──
+  _getAllQuiz() {
+    const admData = App._parseLS('vm_admin_data', { quiz: [] });
+    const extra   = (admData.quiz || []).filter(q =>
+      q.chapter === this.cid || q.subject === this.sid);
+    return [...(this.ch.quiz || []), ...extra];
+  },
+
+  // ── Mark done ──
+  markDone() {
+    App.markDone(this.sid, this.cid);
+    App.toast('🎉 Chapter marked complete!');
+    // Update done badge in header
+    const badges = document.querySelectorAll('.lead span');
+    badges.forEach(b => { if (b.textContent.includes('Complete')) b.style.color = 'var(--tll)'; });
+  },
+
+  // ── Add to tasks ──
+  _addTodo() {
+    TodoPanel.add('Revise: ' + this.ch.title, this.sid, '', 'normal', '');
+    App.toast('Added to tasks 📋');
+  },
+
+  // ── Quick task ──
+  _addQuick() {
+    const inp  = document.getElementById('qTask');
+    const pri  = document.getElementById('qPri')?.value || 'normal';
+    const text = VidyaSec.clampStr((inp?.value || '').trim(), 200);
+    if (!text) return;
+    TodoPanel.add(text, this.sid, '', pri, '');
+    if (inp) inp.value = '';
+    App.toast('Task added ✅');
+  },
+
+  // ── Print notes (no scripts in print window) ──
+  _print() {
+    const body = document.getElementById('notesBody')?.innerText || '';
+    const w = window.open('', '_blank');
+    if (!w) { App.toast('Allow pop-ups to print', '⚠️'); return; }
+    w.document.write(
+      '<!DOCTYPE html><html><head>' +
+      '<title>' + this.ch.title + ' — Notes</title>' +
+      '<style>' +
+        'body{font-family:Georgia,serif;max-width:680px;margin:40px auto;' +
+        'line-height:1.9;color:#1a0e06;padding:0 20px}' +
+        'h1{color:#8A5010}pre{white-space:pre-wrap;font-family:inherit}' +
+        '@media print{body{margin:20px}}' +
+      '</style>' +
+      '</head><body>' +
+      '<h1>📝 ' + this.ch.title + '</h1>' +
+      '<h3 style="color:#666;margin-bottom:20px">' + this.subj.name + ' · Vidya Mandir</h3>' +
+      '<hr><pre>' + body.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</pre>' +
+      '</body></html>'
+    );
+    w.document.close();
+    setTimeout(() => { try { w.print(); } catch(e) {} }, 400);
+  }
+};
+
+document.addEventListener('DOMContentLoaded', () => ChPage.init());
+</script>
+<script src="js/music.js"></script>
+</body>
+</html>

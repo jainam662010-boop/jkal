@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en-GB" data-mode="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="Vidya Mandir — Modern Class 10 CBSE learning platform. Minimal, fast, effective.">
+<title>Vidya Mandir — Class 10 Learning</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<main class="hero-page">
+  <div class="hero-blob" style="width:500px;height:500px;background:rgba(91,91,214,.06);top:-100px;right:-100px;--bd:16s"></div>
+  <div class="hero-blob" style="width:340px;height:340px;background:rgba(139,92,246,.05);bottom:-60px;left:-80px;--bd:12s;animation-delay:-4s"></div>
+  <div class="hero-blob" style="width:240px;height:240px;background:rgba(6,182,212,.04);top:38%;right:12%;--bd:18s;animation-delay:-8s"></div>
+
+  <div style="position:relative;z-index:1;width:100%;max-width:700px;margin:0 auto">
+    <div class="hero-badge au">✦ Class 10 · CBSE · NCERT</div>
+    <h1 class="hero-title au-1">Learn Smarter.<br><span class="grad">Score Higher.</span></h1>
+    <p class="hero-sub au-2">Four subjects. Structured notes. Video lessons. Quizzes. Pomodoro timer. Study planner — everything you need, nothing you don't.</p>
+
+    <div class="hero-btns au-3">
+      <a href="dashboard.html" class="btn btn-a btn-xl" id="heroStart">Get Started →</a>
+      <a href="todo.html" class="btn btn-gh btn-xl">📋 Study Planner</a>
+    </div>
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:44px" class="au-3">
+      <a href="subject.html?id=mathematics"    class="btn btn-gh btn-sm">📐 Mathematics</a>
+      <a href="subject.html?id=science"        class="btn btn-gh btn-sm">🔬 Science</a>
+      <a href="subject.html?id=social-science" class="btn btn-gh btn-sm">🌍 Social Science</a>
+      <a href="subject.html?id=english"        class="btn btn-gh btn-sm">📚 English</a>
+    </div>
+
+    <div class="feat-grid au-4">
+      <div class="feat-card"><div class="feat-ico">▶️</div><div class="feat-title">Video Lessons</div><div class="feat-desc">Curated per-chapter videos from top educators</div></div>
+      <div class="feat-card"><div class="feat-ico">⭐</div><div class="feat-title">NCERT Topics</div><div class="feat-desc">Important topics with board exam marks weightage</div></div>
+      <div class="feat-card"><div class="feat-ico">⏱</div><div class="feat-title">Pomodoro Timer</div><div class="feat-desc">Focus sessions, breaks, daily study goal tracking</div></div>
+      <div class="feat-card"><div class="feat-ico">🧠</div><div class="feat-title">Chapter Quizzes</div><div class="feat-desc">MCQ practice with instant feedback and scoring</div></div>
+      <div class="feat-card"><div class="feat-ico">📋</div><div class="feat-title">Study Planner</div><div class="feat-desc">Tasks with priorities, due dates, marks weight</div></div>
+      <div class="feat-card"><div class="feat-ico">🔖</div><div class="feat-title">Bookmarks</div><div class="feat-desc">Save any chapter for quick access later</div></div>
+    </div>
+    <div style="margin-top:32px;font-size:.72rem;color:var(--s5);text-align:center">Mathematics · Science · Social Science · English</div>
+  </div>
+</main>
+
+<script src="js/app.js"></script>
+<script src="js/security.js"></script>
+<script src="js/theme_todo.js"></script>
+<script>
+App.applyMode();
+document.getElementById('heroStart').addEventListener('click', e => {
+  if (!App.hasProfile()) {
+    e.preventDefault();
+    App.showOnboarding(() => { location.href = 'dashboard.html'; });
+  }
+});
+</script>
+<script src="js/music.js"></script>
+</body>
+</html>
